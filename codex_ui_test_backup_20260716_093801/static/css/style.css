@@ -1,0 +1,62 @@
+body {
+    padding-top: 70px; /* Adjust this value based on your navbar's height */
+}
+
+.navbar-custom {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 1030;
+    background: linear-gradient(to right, #87CEEB, #ADD8E6); /* Softer blue gradient */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-custom {
+    background-color: #6495ED; /* Cornflower Blue */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 700;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.btn-custom:hover {
+    background-color: #4169E1; /* Royal Blue */
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.card-light-blue {
+    background-color: #FFF3E0; /* Light Orange */
+    border: 1px solid #FFCC80;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.card-light-cyan {
+    background-color: #E0F7FA; /* Light Cyan */
+    border: 1px solid #B2EBF2;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.navbar-custom .navbar-nav .nav-link {
+    color: #333;
+}
+
+.navbar-custom .navbar-brand {
+    color: #333;
+}
+
+.navbar-custom .btn-outline-light {
+    color: #333;
+    border-color: #333;
+}
+
+.navbar-custom .btn-outline-light:hover {
+    background-color: #333;
+    color: #fff;
+}
