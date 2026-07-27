@@ -22,7 +22,7 @@
                         <option value="{{ selected_grade }}" selected>{{ selected_grade }}</option>
                         {% endif %}
                         {% for grade_option in grade_options %}
-                        <option value="{{ grade_option }}" {% if selected_grade == grade_option %}selected{% endif %}>Khá»‘i {{ grade_option.split(' ')[1] }}</option>
+                        <option value="{{ grade_option }}" {% if selected_grade == grade_option %}selected{% endif %}>Khối {{ grade_option.split(' ')[1] }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -32,33 +32,33 @@
                 </div>
 
                 {% if current_user_role != 'giaovien' %}
-                <h3 class="mt-4 mb-3">Thông tin Phụ huynh (Cha)</h3>
+                <h3 class="mt-4 mb-3">Thông tin phụ huynh (Cha)</h3>
                 <div class="mb-3">
-                    <label for="father_name" class="form-label">Tên Cha:</label>
+                    <label for="father_name" class="form-label">Tên cha:</label>
                     <input type="text" id="father_name" name="father_name" class="form-control" value="{{ student.father_name if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
-                    <label for="father_phone" class="form-label">SĐT/Zalo Cha:</label>
+                    <label for="father_phone" class="form-label">SĐT/Zalo cha:</label>
                     <input type="text" id="father_phone" name="father_phone" class="form-control" value="{{ student.father_phone if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
-                    <label for="father_occupation" class="form-label">Nghề nghiệp Cha:</label>
+                    <label for="father_occupation" class="form-label">Nghề nghiệp cha:</label>
                     <input type="text" id="father_occupation" name="father_occupation" class="form-control" value="{{ student.father_occupation if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 {% endif %}
 
                 {% if current_user_role != 'giaovien' %}
-                <h3 class="mt-4 mb-3">Thông tin Phụ huynh (Mẹ)</h3>
+                <h3 class="mt-4 mb-3">Thông tin phụ huynh (Mẹ)</h3>
                 <div class="mb-3">
-                    <label for="mother_name" class="form-label">Tên Mẹ:</label>
+                    <label for="mother_name" class="form-label">Tên mẹ:</label>
                     <input type="text" id="mother_name" name="mother_name" class="form-control" value="{{ student.mother_name if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
-                    <label for="mother_phone" class="form-label">SĐT/Zalo Mẹ:</label>
+                    <label for="mother_phone" class="form-label">SĐT/Zalo mẹ:</label>
                     <input type="text" id="mother_phone" name="mother_phone" class="form-control" value="{{ student.mother_phone if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
-                    <label for="mother_occupation" class="form-label">Nghề nghiệp Mẹ:</label>
+                    <label for="mother_occupation" class="form-label">Nghề nghiệp mẹ:</label>
                     <input type="text" id="mother_occupation" name="mother_occupation" class="form-control" value="{{ student.mother_occupation if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
                 </div>
                 {% endif %}
@@ -84,7 +84,7 @@
                 </div>
 
                 {% if current_user_role != 'giaovien' %}
-                <h3 class="mt-4 mb-3">Thông tin Lịch học</h3>
+                <h3 class="mt-4 mb-3">Thông tin lịch học</h3>
                 <p>Chọn ca học cho mỗi ngày trong tuần:</p>
                 {% set days_of_week = {2: 'Thứ Hai', 3: 'Thứ Ba', 4: 'Thứ Tư', 5: 'Thứ Năm', 6: 'Thứ Sáu', 7: 'Thứ Bảy'} %}
                 {% set time_slots = [
