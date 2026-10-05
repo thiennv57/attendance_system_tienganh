@@ -26,12 +26,14 @@ import io
 import csv
 from urllib.parse import urlsplit
 
-from models import db, User, Student, Schedule, Attendance, Tuition, TeacherStudentAssignment, TestExam, TestScore
+from models import db, User, Student, Schedule, Attendance, Tuition, Holiday, TeacherStudentAssignment, TestExam, TestScore
 from utils import import_excel_data, get_students_for_slot, remove_diacritics
 
 TIME_SLOT_1 = 'Ca 1: 18h -19h30'
 TIME_SLOT_2 = 'Ca 2: 19h30 - 21h'
 DOUBLE_SLOT_VALUE = '__double_slot__'
+FEE_PER_SESSION = 120000
+SESSION_FEE_START = (2026, 10) # (year, month) from which tuition is calculated per scheduled session
 ATTENDANCE_COMMENT_SUPPORTED = hasattr(Attendance, 'comment')
 DEFAULT_TEST_ATTEMPT_COUNT = 10
 TEST_SCORE_PATTERN = re.compile(r'^(?:10(?:\.0+)?|[0-9](?:\.\d+)?)$')
@@ -88,6 +90,58 @@ def build_student_slots_map(student_ids, day_of_week):
         )
 
     return student_slots_map
+
+
+def is_session_fee_month(month, year):
+    return (year, month) >= SESSION_FEE_START
+
+
+def get_month_holidays(month, year):
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+    holidays = Holiday.query.filter(Holiday.date >= first_day, Holiday.date <= last_day).all()
+    return {holiday.date for holiday in holidays}
+
+
+def count_expected_sessions(schedules, month, year, holiday_dates):
+    # Schedule.day_of_week uses Vietnamese numbering: 2 = Thứ 2 (Monday) ... 7 = Thứ 7 (Saturday)
+    sessions_per_day = {}
+    for schedule in schedules:
+        sessions_per_day[schedule.day_of_week] = sessions_per_day.get(schedule.day_of_week, 0) + 1
+
+    total = 0
+    for day in range(1, calendar.monthrange(year, month)[1] + 1):
+        current_date = date(year, month, day)
+        if current_date in holiday_dates:
+            continue
+        total += sessions_per_day.get(current_date.isoweekday() + 1, 0)
+    return total
+
+
+def get_or_sync_tuition(student, month, year, holiday_dates):
+    """Return the student's tuition record for the month, creating it if missing.
+
+    From SESSION_FEE_START on, amount_due is recalculated from the schedule and holidays
+    while the record is unpaid; paid records keep the amount they were paid with.
+    """
+    tuition = Tuition.query.filter_by(student_id=student.id, month=month, year=year).first()
+    expected_sessions = None
+
+    if is_session_fee_month(month, year):
+        expected_sessions = count_expected_sessions(student.schedules, month, year, holiday_dates)
+        amount = expected_sessions * FEE_PER_SESSION
+    else:
+        amount = student.default_monthly_fee
+
+    if not tuition:
+        tuition = Tuition(student_id=student.id, month=month, year=year, amount_due=amount, is_paid=False)
+        db.session.add(tuition)
+        db.session.commit()
+    elif expected_sessions is not None and not tuition.is_paid and tuition.amount_due != amount:
+        tuition.amount_due = amount
+        db.session.commit()
+
+    return tuition, expected_sessions
 
 
 def get_grade_sort_value(grade_name):
@@ -342,6 +396,8 @@ with app.app_context():
         print("Database tables created/updated by app.py on startup.")
     else:
         print("Database files already exist. Skipping db.create_all() in app.py.")
+    # Ensure tables added after the initial release exist on old databases
+    Holiday.__table__.create(bind=db.engines['students'], checkfirst=True)
 
 import re
 def _sqlite_regexp_replace(expr, pattern, repl):
@@ -916,7 +972,7 @@ def tuition_management():
     payment_status = request.args.get('payment_status', 'all')
 
     # Start with a query for all students
-    students_query = Student.query
+    students_query = Student.query.options(db.joinedload(Student.schedules))
 
     # Apply search query filter
     if search_query:
@@ -944,15 +1000,12 @@ def tuition_management():
     # Create a CustomPagination object for rendering in the template
     students_pagination = CustomPagination(students, page, per_page, total)
 
-    tuition_data = []
-    for student in students:
-        tuition = Tuition.query.filter_by(student_id=student.id, month=month, year=year).first()
-        if not tuition:
-            # Create a default tuition record if it doesn't exist
-            amount = student.default_monthly_fee
-            tuition = Tuition(student_id=student.id, month=month, year=year, amount_due=amount, is_paid=False)
-            db.session.add(tuition)
-            db.session.commit()
+    holiday_dates = get_month_holidays(month, year) if is_session_fee_month(month, year) else set()
+
+    # Build tuition rows for ALL filtered students (also used for the monthly totals)
+    all_tuition_data = []
+    for student in sorted_students:
+        tuition, expected_sessions = get_or_sync_tuition(student, month, year, holiday_dates)
 
         # Apply custom fee if it exists
         display_amount = tuition.custom_fee if tuition.custom_fee is not None else tuition.amount_due
@@ -961,17 +1014,22 @@ def tuition_management():
         if payment_status == 'all' or \
            (payment_status == 'paid' and tuition.is_paid) or \
            (payment_status == 'unpaid' and not tuition.is_paid):
-            tuition_data.append({
+            all_tuition_data.append({
                 'student_id': student.id,
                 'student_name': student.name,
                 'grade': student.grade,
                 'father_phone': student.father_phone,
                 'mother_phone': student.mother_phone,
                 'amount_due': display_amount,
+                'expected_sessions': expected_sessions,
+                'schedule_days': sorted(schedule.day_of_week for schedule in student.schedules),
                 'is_paid': tuition.is_paid,
                 'tuition_id': tuition.id,
                 'custom_fee': tuition.custom_fee
             })
+
+    page_student_ids = {student.id for student in students}
+    tuition_data = [item for item in all_tuition_data if item['student_id'] in page_student_ids]
 
     # Get all unique grades for the filter dropdown and sort them numerically
     raw_grades = db.session.query(Student.grade).distinct().all()
@@ -988,33 +1046,6 @@ def tuition_management():
     # Get available months and years for filter dropdowns
     available_months = range(1, 13)
     available_years = range(current_year - 5, current_year + 2) # 5 years back, current year, next year
-
-    # Calculate total collected and uncollected amounts for ALL tuition records of the month
-    all_tuition_data = []
-    for student in sorted_students:
-        tuition = Tuition.query.filter_by(student_id=student.id, month=month, year=year).first()
-        if not tuition:
-            amount = student.default_monthly_fee
-            tuition = Tuition(student_id=student.id, month=month, year=year, amount_due=amount, is_paid=False)
-            db.session.add(tuition)
-            db.session.commit()
-
-        display_amount = tuition.custom_fee if tuition.custom_fee is not None else tuition.amount_due
-
-        if payment_status == 'all' or \
-           (payment_status == 'paid' and tuition.is_paid) or \
-           (payment_status == 'unpaid' and not tuition.is_paid):
-            all_tuition_data.append({
-                'student_id': student.id,
-                'student_name': student.name,
-                'grade': student.grade,
-                'father_phone': student.father_phone,
-                'mother_phone': student.mother_phone,
-                'amount_due': display_amount,
-                'is_paid': tuition.is_paid,
-                'tuition_id': tuition.id,
-                'custom_fee': tuition.custom_fee
-            })
 
     total_collected_amount = sum((item['amount_due'] or 0) for item in all_tuition_data if item['is_paid'])
     total_uncollected_amount = sum((item['amount_due'] or 0) for item in all_tuition_data if not item['is_paid'])
@@ -1035,6 +1066,10 @@ def tuition_management():
                            record_count=students_pagination.total,
                            total_collected_amount=total_collected_amount,
                            total_uncollected_amount=total_uncollected_amount,
+                           is_session_fee_month=is_session_fee_month(month, year),
+                           holiday_days=sorted(d.day for d in holiday_dates),
+                           days_in_month=calendar.monthrange(year, month)[1],
+                           first_weekday=date(year, month, 1).weekday(),
                            current_url=current_url)
 
 @app.route('/tuition/update_status', methods=['POST'])
@@ -1091,6 +1126,43 @@ def update_tuition_fee():
     else:
         print(f"No tuition record found for ID: {tuition_id}")
         flash('Không tìm thấy bản ghi học phí.', 'danger')
+
+    return redirect_back('tuition_management')
+
+@app.route('/tuition/holidays', methods=['POST'])
+@login_required
+def update_holidays():
+    if not current_user.is_admin:
+        flash('Bạn không có quyền thực hiện hành động này.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    try:
+        month = int(request.form.get('month'))
+        year = int(request.form.get('year'))
+        days_in_month = calendar.monthrange(year, month)[1]
+        selected_dates = {
+            date(year, month, int(day))
+            for day in request.form.getlist('holiday_days')
+            if 1 <= int(day) <= days_in_month
+        }
+    except (TypeError, ValueError):
+        flash('Dữ liệu ngày nghỉ không hợp lệ.', 'danger')
+        return redirect_back('tuition_management')
+
+    try:
+        # Replace all holidays of the month with the submitted selection
+        existing_dates = get_month_holidays(month, year)
+        Holiday.query.filter(
+            Holiday.date.in_(existing_dates - selected_dates)
+        ).delete(synchronize_session=False)
+        for holiday_date in selected_dates - existing_dates:
+            db.session.add(Holiday(date=holiday_date))
+        db.session.commit()
+        flash(f'Đã cập nhật {len(selected_dates)} ngày nghỉ cho tháng {month}/{year}.', 'success')
+    except Exception as e:
+        print(f"Database commit error: {e}")
+        db.session.rollback()
+        flash('Đã xảy ra lỗi khi cập nhật ngày nghỉ.', 'danger')
 
     return redirect_back('tuition_management')
 

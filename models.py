@@ -65,6 +65,12 @@ class Schedule(db.Model):
     day_of_week = db.Column(db.Integer, nullable=False) # 1=Monday, 7=Sunday
     time_slot = db.Column(db.String(50), nullable=False)
 
+class Holiday(db.Model):
+    __tablename__ = 'holiday'
+    __bind_key__ = 'students' # This model uses the 'students' database
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, unique=True, nullable=False)
+
 class Attendance(db.Model):
     __tablename__ = 'attendance'
     __bind_key__ = 'attendance' # This model uses the 'attendance' database
