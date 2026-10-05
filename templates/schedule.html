@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Lịch học{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4">Lịch học học sinh</h2>
+
+    <div class="card mb-4">
+        <div class="card-header">Tìm kiếm và Lọc</div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('view_schedule') }}" class="row g-2 align-items-end">
+                <input type="hidden" name="tab" id="tab_input" value="{{ active_tab }}">
+                <div class="col-md-3">
+                    <label for="search_query" class="form-label">Tên học sinh</label>
+                    <input type="text" name="search_query" id="search_query" class="form-control" value="{{ search_query }}" placeholder="Tìm theo tên">
+                </div>
+                <div class="col-md-2">
+                    <label for="grade_filter" class="form-label">Khối lớp</label>
+                    <select name="grade_filter" id="grade_filter" class="form-select">
+                        <option value="">Tất cả</option>
+                        {% for grade in available_grades %}
+                        <option value="{{ grade }}" {% if grade == grade_filter %}selected{% endif %}>{{ grade }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="day_of_week_filter" class="form-label">Thứ</label>
+                    <select name="day_of_week_filter" id="day_of_week_filter" class="form-select">
+                        <option value="">Tất cả</option>
+                        {% for day_num, day_name in days_of_week.items() %}
+                        <option value="{{ day_num }}" {% if day_num == day_of_week_filter %}selected{% endif %}>{{ day_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="time_slot_filter" class="form-label">Ca học</label>
+                    <select name="time_slot_filter" id="time_slot_filter" class="form-select">
+                        <option value="">Tất cả</option>
+                        {% for slot in time_slots %}
+                        <option value="{{ slot }}" {% if slot == time_slot_filter %}selected{% endif %}>{{ slot }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary">Lọc</button>
+                    <a href="{{ url_for('view_schedule', tab=active_tab) }}" class="btn btn-secondary">Xóa lọc</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'grid' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-grid" data-tab="grid" type="button" role="tab">Lưới tuần</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'list' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-list" data-tab="list" type="button" role="tab">Danh sách học sinh</button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 bg-white p-3 mb-4">
+        <!-- Weekly grid -->
+        <div class="tab-pane fade {% if active_tab == 'grid' %}show active{% endif %}" id="tab-grid" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-bordered schedule-grid mb-0">
+                    <thead>
+                        <tr>
+                            <th>Ca học</th>
+                            {% for day_num, day_name in days_of_week.items() %}
+                            <th><span class="weekday-badge weekday-{{ day_num }}">{{ day_name }}</span></th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in time_slots %}
+                        <tr>
+                            <th>{{ slot }}</th>
+                            {% for day_num in days_of_week %}
+                            {% set cell_students = grid[slot][day_num] %}
+                            <td>
+                                <span class="schedule-count weekday-{{ day_num }}{% if not cell_students %} schedule-count--empty{% endif %}"
+                                      data-bs-toggle="tooltip"
+                                      title="{{ cell_students|length }} học sinh · {{ days_of_week[day_num] }} · {{ slot.split(':')[0] }}">{{ cell_students|length }} học sinh</span>
+                                {% if cell_students %}
+                                {% for student in cell_students %}
+                                <span class="schedule-student">{{ student.name }} <span class="text-muted">({{ student.grade }})</span></span>
+                                {% endfor %}
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Student list -->
+        <div class="tab-pane fade {% if active_tab == 'list' %}show active{% endif %}" id="tab-list" role="tabpanel">
+            {% set list_return_url = url_for('view_schedule', tab='list', search_query=search_query or None, grade_filter=grade_filter or None, day_of_week_filter=day_of_week_filter, time_slot_filter=time_slot_filter or None) %}
+            <p>Tổng số học sinh: <strong>{{ student_rows|length }}</strong></p>
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <thead>
+                        <tr>
+                            <th>Tên học sinh</th>
+                            <th>Khối lớp</th>
+                            <th>Lịch học</th>
+                            {% if can_edit %}<th>Hành động</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in student_rows %}
+                        <tr>
+                            <td>{{ row.student.name }}</td>
+                            <td>{{ row.student.grade }}</td>
+                            <td>
+                                {% for schedule in row.schedules %}
+                                <span class="weekday-badge weekday-{{ schedule.day_of_week }} me-1 mb-1">
+                                    {{ days_of_week.get(schedule.day_of_week, 'Thứ ' ~ schedule.day_of_week) }} · {{ schedule.time_slot.split(':')[0] }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">Chưa có lịch</span>
+                                {% endfor %}
+                            </td>
+                            {% if can_edit %}
+                            <td>
+                                <a href="{{ url_for('edit_student', student_id=row.student.id, return_to=list_return_url) }}" class="btn btn-warning btn-sm">Sửa</a>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{{ 4 if can_edit else 3 }}" class="text-center text-muted">Không có học sinh phù hợp.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+        new bootstrap.Tooltip(element);
+    });
+
+    // Keep the active tab when submitting the filter form
+    document.querySelectorAll('[data-tab]').forEach(function (tabButton) {
+        tabButton.addEventListener('shown.bs.tab', function () {
+            document.getElementById('tab_input').value = this.getAttribute('data-tab');
+        });
+    });
+</script>
+{% endblock %}

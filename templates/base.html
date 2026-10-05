@@ -33,6 +33,11 @@
                         <a class="app-nav__link app-nav__link--violet" href="{{ url_for('students') }}"><i class="fas fa-user-graduate"></i><span>Học sinh</span></a>
                     </li>
                     {% endif %}
+                    {% if current_user.role in ['admin', 'giaovien'] %}
+                    <li class="nav-item">
+                        <a class="app-nav__link app-nav__link--violet" href="{{ url_for('view_schedule') }}"><i class="fas fa-calendar-week"></i><span>Lịch học</span></a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="app-nav__link app-nav__link--green" href="{{ url_for('take_attendance') }}"><i class="fas fa-clipboard-check"></i><span>Điểm danh</span></a>
                     </li>

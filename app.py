@@ -927,6 +927,77 @@ def student_management():
     students = sort_students_by_grade_and_name(students)
     return render_template('student_management.html', students=students)
 
+@app.route('/schedule', methods=['GET'])
+@login_required
+def view_schedule():
+    # Teachers get a read-only view; admin additionally gets edit links to the student form
+    if current_user.role not in ['admin', 'giaovien']:
+        flash('Bạn không có quyền truy cập trang này.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    search_query = request.args.get('search_query', '').strip()
+    grade_filter = request.args.get('grade_filter', '')
+    day_of_week_filter = request.args.get('day_of_week_filter', type=int)
+    time_slot_filter = request.args.get('time_slot_filter', '')
+    active_tab = 'list' if request.args.get('tab') == 'list' else 'grid'
+
+    days_of_week = {2: 'Thứ 2', 3: 'Thứ 3', 4: 'Thứ 4', 5: 'Thứ 5', 6: 'Thứ 6', 7: 'Thứ 7'}
+    time_slots = [TIME_SLOT_1, TIME_SLOT_2]
+
+    query = Student.query.options(db.joinedload(Student.schedules))
+    if grade_filter:
+        query = query.filter(Student.grade == grade_filter)
+    students_list = query.all()
+    if search_query:
+        # Match in Python so searches work with or without diacritics
+        def normalize(text):
+            return remove_diacritics(text).replace('đ', 'd')
+        normalized_query = normalize(search_query.lower())
+        students_list = [s for s in students_list if normalized_query in normalize((s.name or '').lower())]
+    sorted_students = sort_students_by_grade_and_name(students_list)
+
+    def matches_filter(schedule):
+        return (not day_of_week_filter or schedule.day_of_week == day_of_week_filter) and \
+               (not time_slot_filter or schedule.time_slot == time_slot_filter)
+
+    slot_order = {slot: index for index, slot in enumerate(time_slots)}
+    has_schedule_filter = bool(day_of_week_filter or time_slot_filter)
+
+    grid = {slot: {day: [] for day in days_of_week} for slot in time_slots}
+    student_rows = []
+    for student in sorted_students:
+        matched_schedules = [s for s in student.schedules if matches_filter(s)]
+        if has_schedule_filter and not matched_schedules:
+            continue
+
+        for schedule in matched_schedules:
+            if schedule.time_slot in grid and schedule.day_of_week in days_of_week:
+                grid[schedule.time_slot][schedule.day_of_week].append(student)
+
+        student_rows.append({
+            'student': student,
+            'schedules': sorted(
+                student.schedules,
+                key=lambda s: (s.day_of_week, slot_order.get(s.time_slot, 99))
+            )
+        })
+
+    grades = db.session.query(Student.grade).distinct().all()
+    grades = sorted((g[0] for g in grades if g[0]), key=get_grade_sort_value)
+
+    return render_template('schedule.html',
+                           grid=grid,
+                           student_rows=student_rows,
+                           days_of_week=days_of_week,
+                           time_slots=time_slots,
+                           available_grades=grades,
+                           search_query=search_query,
+                           grade_filter=grade_filter,
+                           day_of_week_filter=day_of_week_filter,
+                           time_slot_filter=time_slot_filter,
+                           active_tab=active_tab,
+                           can_edit=current_user.role == 'admin')
+
 @app.route('/bulk_update_tuition_status', methods=['POST'])
 @admin_required
 def bulk_update_tuition_status():
@@ -1384,7 +1455,7 @@ def edit_student(student_id):
 
         db.session.commit()
         flash(f'Học sinh {student.name} đã được cập nhật thành công.', 'success')
-        return redirect(url_for('students'))
+        return redirect_back('students')
     return render_template('student_form.html', student=student, current_user_role=current_user.role)
 
 @app.route('/student/delete/<int:student_id>', methods=['POST'])
